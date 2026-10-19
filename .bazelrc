@@ -1,0 +1,4 @@
+# `bazel build --config=ios_sim //:Glassify` builds the library for the iOS simulator; apps
+# (ios_application) pick the platform themselves. `bazel test //:core_tests` runs on the host.
+build:ios_sim --platforms=@apple_support//platforms:ios_sim_arm64
+build:ios --platforms=@apple_support//platforms:ios_arm64

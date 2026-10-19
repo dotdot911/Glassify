@@ -1,0 +1,25 @@
+# Glassify's example app. It uses the library as a local Swift package.
+# Generate the Xcode project with `xcodegen generate` in this directory.
+name: GlassifyDemo
+options:
+  bundleIdPrefix: dev.glassify
+  deploymentTarget:
+    iOS: "13.0"
+packages:
+  Glassify:
+    path: ../..
+targets:
+  GlassifyDemo:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: Glassify
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.glassify.example
+        SWIFT_VERSION: "5.0"
+        INFOPLIST_FILE: Info.plist
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: XNFGCQVLAN

@@ -1,0 +1,47 @@
+load("@rules_apple//apple:resources.bzl", "apple_resource_bundle")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test", "objc_library")
+
+package(default_visibility = ["//visibility:private"])
+
+# C++17 core: size laws, colour matrices, uniform packing, springs. No Apple headers.
+cc_library(
+    name = "glassify_core",
+    srcs = glob(["Sources/Glassify/Core/*.cpp"]),
+    hdrs = glob(["Sources/Glassify/Core/include/glassify/*.h"]) + ["Sources/Glassify/Shaders/glass_shared.h"],
+    copts = ["-std=c++17"],
+    includes = ["Sources/Glassify/Core/include"],
+)
+
+# The Metal shaders, compiled into GlassifyShaders.bundle/default.metallib.
+apple_resource_bundle(
+    name = "GlassifyShaders",
+    bundle_name = "GlassifyShaders",
+    resources = glob(["Sources/Glassify/Shaders/*.metal"]),
+    structured_resources = [],
+)
+
+# The UIKit layer. Import it as `#import <Glassify/Glassify.h>` or, from Swift, `import Glassify`.
+objc_library(
+    name = "Glassify",
+    srcs = glob([
+        "Sources/Glassify/Platform/*.mm",
+        "Sources/Glassify/Platform/*.h",
+    ]) + ["Sources/Glassify/Shaders/glass_shared.h"],
+    hdrs = glob(["Sources/Glassify/include/Glassify/*.h"]),
+    copts = ["-std=c++17"],
+    data = [":GlassifyShaders"],
+    includes = ["Sources/Glassify/include"],
+    module_name = "Glassify",
+    sdk_frameworks = ["UIKit", "Metal", "QuartzCore", "CoreGraphics"],
+    visibility = ["//visibility:public"],
+    deps = [":glassify_core"],
+)
+
+cc_test(
+    name = "core_tests",
+    srcs = glob(["Tests/Core/*.cpp", "Tests/Core/*.h"]),
+    copts = ["-std=c++17"],
+    data = glob(["Tests/Core/data/**"]),
+    local_defines = ['GLS_TEST_DATA=\\"Tests/Core/data\\"'],
+    deps = [":glassify_core"],
+)
