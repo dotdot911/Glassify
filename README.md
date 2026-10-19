@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Bazel-compatible-brightgreen.svg" alt="Bazel compatible">
   <img src="https://img.shields.io/badge/platform-iOS%2013%2B-blue.svg" alt="Platform iOS 13+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License Apache 2.0">
-  <a href="https://github.com/sponsors/dotdot911"><img src="https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa.svg" alt="Sponsor"></a>
+  <a href="https://paypal.me/dotdot911"><img src="https://img.shields.io/badge/sponsor-PayPal-ea4aaa.svg" alt="Sponsor with PayPal"></a>
 </p>
 
 <p align="center">
@@ -227,8 +227,8 @@ open GlassifyDemo.xcodeproj
 
 ## Support
 
-If Glassify saves you time, you can support its development on
-[GitHub Sponsors](https://github.com/sponsors/dotdot911).
+If Glassify saves you time, you can support its development with
+[PayPal](https://paypal.me/dotdot911).
 
 ## License
 
