@@ -86,6 +86,35 @@ UIView *GLSDefaultBackdropSource(UIView *view) {
     return view.window ?: view.superview ?: view;
 }
 
+@interface GLSTrackingGestureRecognizer : UIPanGestureRecognizer <UIGestureRecognizerDelegate>
+@end
+
+@implementation GLSTrackingGestureRecognizer
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    return [self.view isKindOfClass:UIControl.class] && ((UIControl *)self.view).isTracking;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+    return YES;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
+    return [other isKindOfClass:UIPanGestureRecognizer.class] && other.view != self.view && [self.view isDescendantOfView:other.view];
+}
+
+@end
+
+void GLSInstallTrackingGesture(UIControl *control) {
+    GLSTrackingGestureRecognizer *pan = [[GLSTrackingGestureRecognizer alloc] initWithTarget:nil action:nil];
+    pan.delegate = pan;
+    pan.cancelsTouchesInView = NO;
+    pan.delaysTouchesEnded = NO;
+    [control addGestureRecognizer:pan];
+}
+
 @implementation GLSGlassView {
     GLSGlassSurface *_surface;
     NSArray<UIView *> *_tintedVibrantViews;

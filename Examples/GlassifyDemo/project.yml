@@ -23,3 +23,26 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: XNFGCQVLAN
+  GlassifyDemoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: GlassifyDemo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.glassify.example.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GlassifyDemo
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: XNFGCQVLAN
+schemes:
+  GlassifyDemo:
+    build:
+      targets:
+        GlassifyDemo: all
+        GlassifyDemoUITests: [test]
+    test:
+      targets: [GlassifyDemoUITests]

@@ -80,6 +80,7 @@ constexpr float kAccessibilityStep = 0.1f;
 }
 
 - (void)commonInit {
+    GLSInstallTrackingGesture(self);
     _maximumValue = 1;
     _continuous = YES;
     _maxTrack = [UIView new];

@@ -24,6 +24,16 @@ final class GlassPage: ShowcasePage {
             glass(CGSize(width: 104, height: 50), text: "Tinted") { $0.glassTintColor = UIColor.systemBlue.withAlphaComponent(0.6) },
         ])
 
+        let container = GLSGlassContainerView(frame: CGRect(x: 0, y: 0, width: 220, height: 72))
+        container.spacing = 20
+        for i in 0..<2 {
+            let circle = GLSGlassView(frame: CGRect(x: 52 + CGFloat(i) * 52, y: 8, width: 64, height: 64))
+            container.addSubview(circle)
+            circles.append(circle)
+        }
+        container.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(toggleMerge)))
+        addRow("Container: tap to split and merge", height: 80, [container])
+
         addRow("Interactive: press and drag", height: 56, [
             glass(CGSize(width: 180, height: 56), text: "Press me") { $0.isInteractive = true },
         ])
@@ -48,15 +58,6 @@ final class GlassPage: ShowcasePage {
         materialize.addTarget(self, action: #selector(toggleGlass), for: .primaryActionTriggered)
         addRow("Materialize", height: materialize.bounds.height, [materialize])
 
-        let container = GLSGlassContainerView(frame: CGRect(x: 0, y: 0, width: 220, height: 72))
-        container.spacing = 20
-        for i in 0..<2 {
-            let circle = GLSGlassView(frame: CGRect(x: 52 + CGFloat(i) * 52, y: 8, width: 64, height: 64))
-            container.addSubview(circle)
-            circles.append(circle)
-        }
-        container.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(toggleMerge)))
-        addRow("Container: tap to split and merge", height: 80, [container])
     }
 
     private func glass(_ size: CGSize, text: String?, configure: (GLSGlassView) -> Void = { _ in }) -> GLSGlassView {

@@ -14,6 +14,9 @@
 // The view a control's glass snapshots by default: the nearest ancestor with an opaque background, else the window.
 UIKIT_EXTERN UIView *GLSDefaultBackdropSource(UIView *view);
 
+// Makes pans on the control's ancestors, such as the navigation controller's back swipe, wait while it tracks a touch.
+UIKIT_EXTERN void GLSInstallTrackingGesture(UIControl *control);
+
 @interface GLSGlassView (Internal)
 - (GLSGlassSurface *)gls_surface;
 // The container's surface when the glass is grouped.

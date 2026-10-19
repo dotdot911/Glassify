@@ -86,6 +86,7 @@ struct CriticalSpring {
 }
 
 - (void)commonInit {
+    GLSInstallTrackingGesture(self);
     _offWell = [[UIView alloc] initWithFrame:self.bounds];
     _offWell.userInteractionEnabled = NO;
     _offWell.layer.cornerRadius = kHeight / 2;

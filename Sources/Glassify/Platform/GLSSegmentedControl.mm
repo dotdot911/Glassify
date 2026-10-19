@@ -116,6 +116,7 @@ CGFloat RubberBand(CGFloat d) {
 }
 
 - (void)commonInit {
+    GLSInstallTrackingGesture(self);
     _segments = [NSMutableArray array];
     _labels = [NSMutableArray array];
     _titleAttributes = [NSMutableDictionary dictionary];

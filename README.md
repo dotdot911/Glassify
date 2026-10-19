@@ -25,12 +25,33 @@ Glassify draws the glass with Metal, so it looks the same on every iOS version, 
 ## Features
 
 - [x] Glass views: regular, clear, tinted and interactive
+
+  <img src="Assets/features/glass.gif" width="360" alt="Regular, clear and tinted glass over a scrolling picture, and an interactive glass pressed">
+
 - [x] Glass containers that merge nearby shapes into one
+
+  <img src="Assets/features/container.gif" width="360" alt="Two glass circles in a container splitting and merging">
+
 - [x] Glass buttons in four styles and three sizes
+
+  <img src="Assets/features/buttons.gif" width="360" alt="Glass buttons being pressed">
+
 - [x] Switch, slider and segmented control with the liquid glass knob
+
+  <img src="Assets/features/controls.gif" width="360" alt="A switch toggled, a slider dragged and a segment selected">
+
 - [x] Navigation controller with a glass navigation bar and toolbar
+
+  <img src="Assets/features/bars.gif" width="360" alt="A list scrolling under the glass navigation bar, and the Select button pressed">
+
 - [x] Tab bar controller with the floating glass tab bar and its liquid lens
+
+  <img src="Assets/features/tabbar.gif" width="360" alt="The liquid lens dragged across the floating tab bar">
+
 - [x] Light and dark mode
+
+  <img src="Assets/features/appearance.gif" width="360" alt="The glass switching between light and dark mode">
+
 - [x] Swift and Objective-C
 - [x] Swift Package Manager, CocoaPods and Bazel
 
