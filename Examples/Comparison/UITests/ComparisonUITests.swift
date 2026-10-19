@@ -57,6 +57,29 @@ final class ComparisonUITests: XCTestCase {
         sleep(2)
     }
 
+    func testReadmeTour() {
+        let frame = app.windows.firstMatch.frame
+        let midX = frame.width / 2
+        point(midX, frame.height * 0.7).press(forDuration: 0.1, thenDragTo: point(midX, frame.height * 0.3),
+                                               withVelocity: XCUIGestureVelocity(400), thenHoldForDuration: 0.2)
+        sleep(1)
+        tab(0).press(forDuration: 0.4, thenDragTo: tab(2), withVelocity: XCUIGestureVelocity(250),
+                     thenHoldForDuration: 0.5)
+        sleep(1)
+        tab(2).press(forDuration: 0.4, thenDragTo: tab(1), withVelocity: XCUIGestureVelocity(250),
+                     thenHoldForDuration: 0.4)
+        sleep(1)
+        point(midX, frame.height * 0.75).press(forDuration: 0.1, thenDragTo: point(midX, frame.height * 0.3),
+                                                withVelocity: XCUIGestureVelocity(600), thenHoldForDuration: 0.1)
+        sleep(2)
+        app.buttons["Edit"].firstMatch.press(forDuration: 0.6)
+        sleep(1)
+        tab(2).tap()
+        sleep(1)
+        tab(0).tap()
+        sleep(2)
+    }
+
     func testTapTabs() {
         tab(2).tap()
         sleep(3)

@@ -1,8 +1,26 @@
-# Glassify
+<h1 align="center">Glassify</h1>
 
-Glassify brings the Liquid Glass look of iOS 26 to apps that support iOS 13 and later.
+<p align="center">
+  The Liquid Glass look of iOS 26, for apps that support iOS 13 and later.
+</p>
 
-It draws the glass with Metal, so it looks the same on every iOS version, including iOS 26.
+<p align="center">
+  <img src="https://img.shields.io/badge/CocoaPods-compatible-brightgreen.svg" alt="CocoaPods compatible">
+  <img src="https://img.shields.io/badge/SPM-compatible-brightgreen.svg" alt="Swift Package Manager compatible">
+  <img src="https://img.shields.io/badge/Bazel-compatible-brightgreen.svg" alt="Bazel compatible">
+  <img src="https://img.shields.io/badge/platform-iOS%2013%2B-blue.svg" alt="Platform iOS 13+">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License Apache 2.0">
+</p>
+
+<p align="center">
+  <img src="Assets/tour.gif" width="560" alt="The same app built with UIKit on iOS 26 (left) and with Glassify (right)">
+</p>
+
+<p align="center">
+  The same app twice: UIKit on iOS 26 on the left, Glassify on the right.
+</p>
+
+Glassify draws the glass with Metal, so it looks the same on every iOS version, including iOS 26.
 
 ## Features
 
@@ -11,6 +29,7 @@ It draws the glass with Metal, so it looks the same on every iOS version, includ
 - [x] Glass buttons in four styles and three sizes
 - [x] Switch, slider and segmented control with the liquid glass knob
 - [x] Navigation controller with a glass navigation bar and toolbar
+- [x] Tab bar controller with the floating glass tab bar and its liquid lens
 - [x] Light and dark mode
 - [x] Swift and Objective-C
 - [x] Swift Package Manager, CocoaPods and Bazel
@@ -144,6 +163,16 @@ bar button items and toolbar items work as before.
 let navigation = GLSNavigationController(rootViewController: HomeViewController())
 ```
 
+### Tab bar
+
+Use `GLSTabBarController` instead of `UITabBarController`. It builds the floating glass tab bar from
+the `tabBarItem` of each view controller (up to five).
+
+```swift
+let tabs = GLSTabBarController()
+tabs.viewControllers = [home, library, settings]
+```
+
 ### Objective-C
 
 ```objc
@@ -164,6 +193,9 @@ cd Examples/GlassifyDemo
 xcodegen generate
 open GlassifyDemo.xcodeproj
 ```
+
+`Examples/Comparison` builds the app in the video above twice from one set of sources:
+`ComparisonUIKit` with UIKit (iOS 26) and `ComparisonGlassify` with Glassify (iOS 13).
 
 ## Contributing
 
