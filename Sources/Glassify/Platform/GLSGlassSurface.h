@@ -16,6 +16,8 @@
 #include "glassify/glass_inputs.h"
 #include "glassify/pack.h"
 
+@class GLSBackdrop;
+
 NS_ASSUME_NONNULL_BEGIN
 
 @protocol GLSFrameClient <NSObject>
@@ -59,6 +61,14 @@ struct GLSSurfaceRequest {
     UIView *_Nullable __weak lumaEdge = nil;
     // Views whose sublayers become the glass's content mask instead of being shown as they are.
     NSArray<UIView *> *_Nullable vibrantViews = nil;
+    // Views drawn with `tintedMatrix` (rows, light and dark) instead of the Controls vibrancy.
+    NSArray<UIView *> *_Nullable tintedVibrantViews = nil;
+    float tintedMatrix[2][3][4] = {};
+    float tintedOpacity = 1;
+    // When every vibrant view lies in this view, the masks are drawn in its bounds, so its own transform is free.
+    UIView *_Nullable vibrantReference = nil;
+    // A capsule in host points cut out of `vibrantViews` and kept by `tintedVibrantViews`.
+    CGRect vibrantHole = CGRectNull;
 };
 
 // A negative `backdropLuma` means unknown.
@@ -88,6 +98,7 @@ glassify::Appearance GLSTraitAppearance(UITraitCollection *traits);
 @property (nonatomic, readonly, nullable) id<MTLTexture> outputTexture;
 @property (nonatomic, readonly) CGRect outputRect;
 @property (nonatomic, readonly, nullable) UIView *host;
+@property (nonatomic, readonly, nullable) GLSBackdrop *backdrop;
 // Glass under this one, composited under the source snapshot in this surface's backdrop.
 @property (nonatomic, weak, nullable) GLSGlassSurface *underlaySurface;
 // YES if the host moved relative to the source, or the backdrop changed, since the last render.

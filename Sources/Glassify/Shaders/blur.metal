@@ -46,13 +46,17 @@ kernel void gls_downsample13(texture2d<float, access::sample> src [[texture(0)]]
 kernel void gls_composite_underlay(texture2d<float, access::read> snapshot [[texture(0)]],
                                    texture2d<float, access::sample> underlay [[texture(1)]],
                                    texture2d<float, access::write> dst [[texture(2)]],
+                                   texture2d<float, access::sample> page [[texture(3)]],
                                    constant float4 *params [[buffer(0)]],
                                    uint2 gid [[thread_position_in_grid]]) {
     if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) return;
     const float4 rect = params[0];
-    const float4 base = params[1];
+    const float4 pageRect = params[2];
     const float2 uv = (float2(gid) + 0.5f - rect.xy) / rect.zw;
     constexpr sampler kLinearZero(filter::linear, address::clamp_to_zero);
+    constexpr sampler kLinearEdge(filter::linear, address::clamp_to_edge);
+    const float4 base = pageRect.z > 0.0f ? page.sample(kLinearEdge, (float2(gid) + 0.5f - pageRect.xy) / pageRect.zw, level(0))
+                                          : params[1];
     const float4 under = underlay.sample(kLinearZero, uv);
     const float4 below = under + (1.0f - under.a) * base;
     const float4 top = snapshot.read(gid);

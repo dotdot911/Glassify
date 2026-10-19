@@ -113,4 +113,14 @@ static constexpr CGFloat kReach = 64.8;
     [CATransaction commit];
 }
 
+- (void)gls_matchBackgroundOf:(UIView *)view {
+    UIColor *color = nil;
+    for (UIView *v = view; v && !color; v = v.superview) {
+        UIColor *background = [v.backgroundColor resolvedColorWithTraitCollection:v.traitCollection];
+        CGFloat alpha = 0;
+        if (background && [background getWhite:nullptr alpha:&alpha] && alpha >= 1) color = v.backgroundColor;
+    }
+    self.backgroundColor = [color ?: UIColor.systemBackgroundColor colorWithAlphaComponent:0.85];
+}
+
 @end

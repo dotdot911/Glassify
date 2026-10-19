@@ -8,6 +8,7 @@
 
 #import "Glassify/GLSGlassButton.h"
 
+#import "GLSGlassViewInternal.h"
 #import "Glassify/GLSGlassView+Testing.h"
 #import "Glassify/GLSGlassView.h"
 
@@ -148,12 +149,17 @@ Metrics MetricsFor(GLSGlassButtonSize size) {
 - (UIView *)backdropSourceView { return _backdropSourceView; }
 - (void)setBackdropSourceView:(UIView *)view {
     _backdropSourceView = view;
-    _glass.backdropSourceView = view ?: self.superview;
+    _glass.backdropSourceView = view ?: GLSDefaultBackdropSource(self);
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    _glass.backdropSourceView = _backdropSourceView ?: GLSDefaultBackdropSource(self);
 }
 
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
-    _glass.backdropSourceView = _backdropSourceView ?: self.superview;
+    _glass.backdropSourceView = _backdropSourceView ?: GLSDefaultBackdropSource(self);
 }
 
 - (void)tintColorDidChange {

@@ -77,8 +77,21 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
 }
 @end
 
+UIView *GLSDefaultBackdropSource(UIView *view) {
+    for (UIView *v = view.superview; v; v = v.superview) {
+        UIColor *background = [v.backgroundColor resolvedColorWithTraitCollection:v.traitCollection];
+        CGFloat alpha = 0;
+        if (background && [background getWhite:nullptr alpha:&alpha] && alpha >= 1) return v;
+    }
+    return view.window ?: view.superview ?: view;
+}
+
 @implementation GLSGlassView {
     GLSGlassSurface *_surface;
+    NSArray<UIView *> *_tintedVibrantViews;
+    float _tintedMatrix[2][3][4];
+    CGRect _vibrantHole;
+    CGFloat _tintedOpacity;
     // The scheme the content was last styled for: -1 none, 0 light, 1 dark.
     int _contentDark;
     BOOL _needsRender, _deallocating;
@@ -108,6 +121,8 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
     _glassEnabled = YES;
     _adaptsColorScheme = YES;
     _contentDark = -1;
+    _vibrantHole = CGRectNull;
+    _tintedOpacity = 1;
     _materializeProbe = [[UIView alloc] initWithFrame:CGRectMake(1, 0, 0, 0)];
     _materializeProbe.userInteractionEnabled = NO;
     [self addSubview:_materializeProbe];
@@ -250,6 +265,30 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
 - (void)setVibrantContentViews:(NSArray<UIView *> *)vibrantContentViews {
     _vibrantContentViews = [vibrantContentViews copy];
     [self setNeedsGlassRender];
+}
+
+- (void)gls_setTintedVibrantViews:(NSArray<UIView *> *)views matrix:(const float (*)[3][4])matrix {
+    _tintedVibrantViews = [views copy];
+    memcpy(_tintedMatrix, matrix, sizeof(_tintedMatrix));
+    [self setNeedsVibrantContentUpdate];
+}
+
+- (void)gls_setVibrantHole:(CGRect)hole tintedOpacity:(CGFloat)opacity {
+    _vibrantHole = hole;
+    _tintedOpacity = opacity;
+    [self setNeedsGlassRender];
+}
+
+- (void)gls_fillTintedVibrancy:(GLSSurfaceRequest &)request inLayer:(CALayer *)target {
+    if (!_tintedVibrantViews.count) return;
+    if (!CGRectIsNull(_vibrantHole) && !CGRectIsEmpty(_vibrantHole)) {
+        CALayer *layer = self.layer.presentationLayer ?: self.layer;
+        request.vibrantHole = target ? [layer convertRect:_vibrantHole toLayer:target] : _vibrantHole;
+    }
+    request.tintedOpacity = float(_tintedOpacity);
+    request.tintedVibrantViews = request.tintedVibrantViews ? [request.tintedVibrantViews arrayByAddingObjectsFromArray:_tintedVibrantViews]
+                                                            : _tintedVibrantViews;
+    memcpy(request.tintedMatrix, _tintedMatrix, sizeof(_tintedMatrix));
 }
 
 - (void)setNeedsVibrantContentUpdate {
@@ -468,7 +507,7 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
     if (wasActive && ![self wantsContinuousFrames]) [[GLSFrameDriver shared] removeClient:self];
     GLSGlassContainerView *container = [self container];
     if (container) {
-        if (pressing || _lastTick != 0) [container setNeedsGlassRender];
+        if (pressing || wasActive) [container setNeedsGlassRender];
         return;
     }
     if (pressing || morphing || _needsRender || [_surface isStale]) [self renderNow];
@@ -503,6 +542,8 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
     request.tint = _glassTintColor;
     request.glow = [self glowInLayer:nil];
     request.vibrantViews = [self gls_vibrantViews];
+    request.vibrantReference = self;
+    [self gls_fillTintedVibrancy:request inLayer:nil];
 
     _surface.source = _backdropSourceView ?: self.superview;
     _surface.backdropScale = _style == GLSGlassStyleClear || _frost == GLSGlassFrostReduced ? 0.5 : 0.25;
@@ -649,6 +690,7 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
     CGFloat lawSide = CGFLOAT_MAX;
     BOOL first = YES;
     NSMutableArray<UIView *> *vibrant = [NSMutableArray array];
+    GLSGlassView *vibrantGlass = nil;
     for (UIView *subview in self.subviews) {
         if (![subview isKindOfClass:[GLSGlassView class]] || subview.hidden || subview.alpha <= 0) continue;
         GLSGlassView *glass = (GLSGlassView *)subview;
@@ -663,7 +705,12 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
         GlowState glow = [glass glowInLayer:selfLayer];
         glow.element = int(request.elements.size());
         if (glow.bigAlpha > request.glow.bigAlpha || glow.littleAlpha > request.glow.littleAlpha) request.glow = glow;
-        [vibrant addObjectsFromArray:[glass gls_vibrantViews]];
+        NSArray<UIView *> *glassVibrant = [glass gls_vibrantViews];
+        if (glassVibrant.count) {
+            vibrantGlass = vibrant.count ? nil : glass;
+            [vibrant addObjectsFromArray:glassVibrant];
+        }
+        [glass gls_fillTintedVibrancy:request inLayer:selfLayer];
         ShapeElement e = [glass elementInLayer:selfLayer];
         e.ovalization = 0.f;
         request.elements.push_back(e);
@@ -677,6 +724,7 @@ static void FollowAnimation(id<GLSFrameClient> client, id<CAAction> action) {
     request.frost = CoreFrost(_frost);
     request.lumaEdge = _scrollEdgeEffect;
     request.vibrantViews = vibrant;
+    request.vibrantReference = vibrantGlass;
     [_surface render:request];
 }
 

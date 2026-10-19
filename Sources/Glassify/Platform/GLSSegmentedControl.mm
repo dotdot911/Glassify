@@ -8,6 +8,7 @@
 
 #import "Glassify/GLSSegmentedControl.h"
 
+#import "GLSGlassViewInternal.h"
 #import "Glassify/GLSLiquidLensView.h"
 
 #include <algorithm>
@@ -143,14 +144,19 @@ CGFloat RubberBand(CGFloat d) {
 
 - (void)dealloc { [_link invalidate]; }
 
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    _lens.backdropSourceView = _backdropSourceView ?: GLSDefaultBackdropSource(self);
+}
+
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
-    _lens.backdropSourceView = _backdropSourceView ?: self.superview;
+    _lens.backdropSourceView = _backdropSourceView ?: GLSDefaultBackdropSource(self);
 }
 
 - (void)setBackdropSourceView:(UIView *)view {
     _backdropSourceView = view;
-    _lens.backdropSourceView = view ?: self.superview;
+    _lens.backdropSourceView = view ?: GLSDefaultBackdropSource(self);
 }
 
 #pragma mark Segments

@@ -112,7 +112,7 @@ static id<MTLLibrary> LoadShaderLibrary(id<MTLDevice> device) {
            fromLinear:(id<MTLTexture>)linear
                  veil:(const float *)veil
         commandBuffer:(id<MTLCommandBuffer>)commandBuffer {
-    [self encodePyramid:pyramid fromLinear:linear underlay:nil underlayRect:CGRectZero pxPerPt:1 base:nullptr veil:veil
+    [self encodePyramid:pyramid fromLinear:linear underlay:nil underlayRect:CGRectZero page:nil pageRect:CGRectZero pxPerPt:1 base:nullptr veil:veil
           commandBuffer:commandBuffer];
 }
 
@@ -123,14 +123,29 @@ static id<MTLLibrary> LoadShaderLibrary(id<MTLDevice> device) {
               pxPerPt:(CGFloat)pxPerPt
                  base:(const float *)baseRGBA
         commandBuffer:(id<MTLCommandBuffer>)commandBuffer {
-    [self encodePyramid:pyramid fromLinear:linear underlay:underlay underlayRect:underlayRect pxPerPt:pxPerPt
-                   base:baseRGBA veil:nullptr commandBuffer:commandBuffer];
+    [self encodePyramid:pyramid fromLinear:linear underlay:underlay underlayRect:underlayRect page:nil pageRect:CGRectZero
+                pxPerPt:pxPerPt base:baseRGBA veil:nullptr commandBuffer:commandBuffer];
 }
 
 - (void)encodePyramid:(id<MTLTexture>)pyramid
            fromLinear:(id<MTLTexture>)linear
              underlay:(id<MTLTexture>)underlay
          underlayRect:(CGRect)underlayRect
+                 page:(id<MTLTexture>)page
+             pageRect:(CGRect)pageRect
+              pxPerPt:(CGFloat)pxPerPt
+                 base:(const float *)baseRGBA
+        commandBuffer:(id<MTLCommandBuffer>)commandBuffer {
+    [self encodePyramid:pyramid fromLinear:linear underlay:underlay underlayRect:underlayRect page:page pageRect:pageRect
+                pxPerPt:pxPerPt base:baseRGBA veil:nullptr commandBuffer:commandBuffer];
+}
+
+- (void)encodePyramid:(id<MTLTexture>)pyramid
+           fromLinear:(id<MTLTexture>)linear
+             underlay:(id<MTLTexture>)underlay
+         underlayRect:(CGRect)underlayRect
+                 page:(id<MTLTexture>)page
+             pageRect:(CGRect)pageRect
               pxPerPt:(CGFloat)pxPerPt
                  base:(const float *)baseRGBA
                  veil:(const float *)veil
@@ -155,14 +170,20 @@ static id<MTLLibrary> LoadShaderLibrary(id<MTLDevice> device) {
                                                             textureType:MTLTextureType2D
                                                                  levels:NSMakeRange(0, 1)
                                                                  slices:NSMakeRange(0, 1)];
-        const float params[8] = {float(underlayRect.origin.x * pxPerPt), float(underlayRect.origin.y * pxPerPt),
-                                 float(underlayRect.size.width * pxPerPt), float(underlayRect.size.height * pxPerPt),
-                                 baseRGBA[0], baseRGBA[1], baseRGBA[2], baseRGBA[3]};
+        const bool hasPage = page && pageRect.size.width > 0 && pageRect.size.height > 0;
+        const float params[12] = {float(underlayRect.origin.x * pxPerPt), float(underlayRect.origin.y * pxPerPt),
+                                  float(underlayRect.size.width * pxPerPt), float(underlayRect.size.height * pxPerPt),
+                                  baseRGBA[0], baseRGBA[1], baseRGBA[2], baseRGBA[3],
+                                  hasPage ? float(pageRect.origin.x * pxPerPt) : 0.f,
+                                  hasPage ? float(pageRect.origin.y * pxPerPt) : 0.f,
+                                  hasPage ? float(pageRect.size.width * pxPerPt) : 0.f,
+                                  hasPage ? float(pageRect.size.height * pxPerPt) : 0.f};
         id<MTLComputeCommandEncoder> compute = [commandBuffer computeCommandEncoder];
         [compute setComputePipelineState:_underlayPipeline];
         [compute setTexture:linear atIndex:0];
         [compute setTexture:underlay atIndex:1];
         [compute setTexture:level0 atIndex:2];
+        [compute setTexture:hasPage ? page : underlay atIndex:3];
         [compute setBytes:params length:sizeof(params) atIndex:0];
         const NSUInteger w = _underlayPipeline.threadExecutionWidth;
         const NSUInteger h = _underlayPipeline.maxTotalThreadsPerThreadgroup / w;
@@ -222,9 +243,11 @@ static id<MTLLibrary> LoadShaderLibrary(id<MTLDevice> device) {
            backdrop:(id<MTLTexture>)backdrop
             content:(id<MTLTexture>)content
         vibrantMask:(id<MTLTexture>)vibrantMask
+         tintedMask:(id<MTLTexture>)tintedMask
              output:(id<MTLTexture>)output {
     if (!content) content = [self emptyTexture];
     if (!vibrantMask) vibrantMask = [self emptyTexture];
+    if (!tintedMask) tintedMask = [self emptyTexture];
     const CFTimeInterval t0 = CACurrentMediaTime();
     id<CAMetalDrawable> drawable = [layer nextDrawable];
     const CFTimeInterval tDrawable = CACurrentMediaTime() - t0;
@@ -239,6 +262,7 @@ static id<MTLLibrary> LoadShaderLibrary(id<MTLDevice> device) {
         [encoder setFragmentTexture:backdrop atIndex:0];
         [encoder setFragmentTexture:content atIndex:2];
         [encoder setFragmentTexture:vibrantMask atIndex:3];
+        [encoder setFragmentTexture:tintedMask atIndex:4];
     };
 
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];

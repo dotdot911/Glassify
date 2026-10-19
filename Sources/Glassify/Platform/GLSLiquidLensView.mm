@@ -8,6 +8,7 @@
 
 #import "Glassify/GLSLiquidLensView.h"
 
+#import "GLSBackdrop.h"
 #import "GLSGlassSurface.h"
 #import "GLSGlassViewInternal.h"
 #import "GLSRenderer.h"
@@ -79,6 +80,8 @@ void RedrawTree(UIView *view) {
 
 @implementation GLSLiquidLensView {
     GLSGlassSurface *_surface;
+    // Holds the glass in the superview's space: the lens view moves with CA springs, the glass draws where it is now.
+    UIView *_canvas;
     // Its center.x is the lift progress, animated by the lift spring.
     UIView *_liftProbe;
     CFTimeInterval _liftTimestamp;
@@ -102,7 +105,11 @@ void RedrawTree(UIView *view) {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.userInteractionEnabled = NO;
     self.backgroundColor = UIColor.clearColor;
-    _surface = [[GLSGlassSurface alloc] initWithHost:self];
+    _canvas = [[UIView alloc] initWithFrame:CGRectZero];
+    _canvas.userInteractionEnabled = NO;
+    _canvas.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _surface = [[GLSGlassSurface alloc] initWithHost:_canvas];
+    [GLSBackdrop registerGlassView:self];
     _surface.backdropScale = 1.0;
     _surface.hidden = YES;
     _liftProbe = [[UIView alloc] initWithFrame:CGRectZero];
@@ -116,6 +123,19 @@ void RedrawTree(UIView *view) {
 
 - (void)dealloc {
     [[GLSFrameDriver shared] removeClient:self];
+    [GLSBackdrop unregisterGlassView:self];
+    [_canvas removeFromSuperview];
+}
+
+- (void)didMoveToSuperview {
+    [super didMoveToSuperview];
+    if (UIView *superview = self.superview) {
+        _canvas.frame = superview.bounds;
+        [superview insertSubview:_canvas aboveSubview:self];
+    } else {
+        [_canvas removeFromSuperview];
+    }
+    [self setNeedsRender];
 }
 
 - (void)setStyle:(GLSLiquidLensStyle)style {
@@ -376,10 +396,14 @@ void RedrawTree(UIView *view) {
     [self captureContentIfNeeded];
 
     CALayer *layer = self.layer.presentationLayer ?: self.layer;
+    CALayer *canvasLayer = _canvas.layer.presentationLayer ?: _canvas.layer;
+    _canvas.layer.zPosition = self.layer.zPosition;
     const CGSize size = layer.bounds.size;
+    const CGRect drawn = [layer convertRect:layer.bounds toLayer:canvasLayer];
     GLSSurfaceRequest request;
-    request.elements.push_back(ShapeElement{float(size.width / 2), float(size.height / 2), float(size.width),
-                                            float(size.height), float(std::min(size.width, size.height) / 2), 0.5f});
+    request.elements.push_back(ShapeElement{float(CGRectGetMidX(drawn)), float(CGRectGetMidY(drawn)), float(drawn.size.width),
+                                            float(drawn.size.height),
+                                            float(std::min(drawn.size.width, drawn.size.height) / 2), 0.5f});
     request.style = GlassStyle::Clear;
     request.lawSize = size;
     GlassInputs inputs;
@@ -404,7 +428,8 @@ void RedrawTree(UIView *view) {
         inputs = liquidLensInputs(p, _lifted);
     }
     request.inputs = &inputs;
-    request.opacity = _lifted || _style == GLSLiquidLensStyleSmall ? 1.f : std::min(4.f * p, 1.f);
+    request.opacity = (_lifted || _style == GLSLiquidLensStyleSmall ? 1.f : std::min(4.f * p, 1.f)) *
+                      (self.hidden ? 0.f : layer.opacity);
     if (_style == GLSLiquidLensStyleSmall) {
         if (!_emptyContent) {
             MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
@@ -415,11 +440,11 @@ void RedrawTree(UIView *view) {
             [_emptyContent replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:&clear bytesPerRow:4];
         }
         request.content = _emptyContent;
-        request.contentRect = CGRectMake(0, 0, size.width, size.height);
+        request.contentRect = drawn;
     } else if (_content && _liftedContentView && self.superview) {
         request.content = _content;
         CALayer *superLayer = self.superview.layer.presentationLayer ?: self.superview.layer;
-        request.contentRect = [superLayer convertRect:_liftedContentFrame toLayer:layer];
+        request.contentRect = [superLayer convertRect:_liftedContentFrame toLayer:canvasLayer];
     }
     _surface.source = source;
     [_surface render:request];

@@ -8,6 +8,7 @@
 
 #import "Glassify/GLSSwitch.h"
 
+#import "GLSGlassViewInternal.h"
 #import "Glassify/GLSLiquidLensView.h"
 
 #include <algorithm>
@@ -18,6 +19,11 @@ namespace {
 constexpr CGFloat kWidth = 63, kHeight = 28;
 constexpr CGFloat kKnobOff = 20.5, kKnobOn = 42.5, kKnobY = 14;
 constexpr CGFloat kImageWidth = 630, kSolid = 63, kClear = 567;
+constexpr CGFloat kToggleDistance = 25;
+constexpr CFTimeInterval kMinimumPressDuration = 0.01, kLensHangTime = 0.22;
+constexpr double kTrackGoingOnResponse = 0.68, kTrackGoingOffResponse = 0.4;
+
+enum class PendingSource { none, press, pan };
 
 // A critically damped spring (damping 1) in closed form, stepped per frame.
 struct CriticalSpring {
@@ -45,8 +51,10 @@ struct CriticalSpring {
     UIView *_offWell, *_onWell;
     CAGradientLayer *_gradient;
     GLSLiquidLensView *_knob;
-    BOOL _displayedOn, _pressed, _moved, _startOn, _static;
-    CGFloat _startX, _currentX;
+    BOOL _displayedOn, _pressed, _startOn, _static, _pendingOn;
+    PendingSource _pendingSource;
+    CGFloat _startX, _currentX, _zeroOffset;
+    UIImpactFeedbackGenerator *_feedback;
     CriticalSpring _track;
     double _trackTarget;
     CADisplayLink *_link;
@@ -81,11 +89,13 @@ struct CriticalSpring {
     _offWell = [[UIView alloc] initWithFrame:self.bounds];
     _offWell.userInteractionEnabled = NO;
     _offWell.layer.cornerRadius = kHeight / 2;
+    _offWell.layer.cornerCurve = kCACornerCurveContinuous;
     _offWell.backgroundColor = UIColor.tertiaryLabelColor;
     [self addSubview:_offWell];
     _onWell = [[UIView alloc] initWithFrame:self.bounds];
     _onWell.userInteractionEnabled = NO;
     _onWell.layer.cornerRadius = kHeight / 2;
+    _onWell.layer.cornerCurve = kCACornerCurveContinuous;
     [self addSubview:_onWell];
     _gradient = [CAGradientLayer layer];
     _gradient.startPoint = CGPointMake(0, 0.5);
@@ -127,9 +137,14 @@ struct CriticalSpring {
 - (NSUInteger)_accessibilityAutomationType { return 40; }
 - (CGSize)sizeThatFits:(CGSize)size { return CGSizeMake(kWidth, kHeight); }
 
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    _knob.backdropSourceView = GLSDefaultBackdropSource(self);
+}
+
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
-    _knob.backdropSourceView = self.superview ?: self;
+    _knob.backdropSourceView = GLSDefaultBackdropSource(self);
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -159,7 +174,6 @@ struct CriticalSpring {
 
 - (void)setOn:(BOOL)on animated:(BOOL)animated {
     _on = on;
-    if (_pressed) return;
     [self showOn:on animated:animated];
     [self moveKnobAnimated:animated];
 }
@@ -189,6 +203,7 @@ struct CriticalSpring {
 - (void)showOn:(BOOL)on animated:(BOOL)animated {
     _displayedOn = on;
     _trackTarget = on ? 1 : 0;
+    _track.velocity = 0;
     if (!animated) {
         _track.value = _trackTarget;
         _track.velocity = 0;
@@ -213,7 +228,7 @@ struct CriticalSpring {
     const CFTimeInterval now = CACurrentMediaTime();
     const double dt = _lastTick == 0 ? 1.0 / 60 : std::min(now - _lastTick, 1.0 / 20);
     _lastTick = now;
-    _track.step(_trackTarget, _trackTarget > 0.5 ? 0.4 : 0.68, dt);
+    _track.step(_trackTarget, _trackTarget > 0.5 ? kTrackGoingOnResponse : kTrackGoingOffResponse, dt);
     const BOOL settled = std::fabs(_track.value - _trackTarget) < 1e-3 && std::fabs(_track.velocity) < 1e-2;
     if (settled) {
         _track.value = _trackTarget;
@@ -275,11 +290,23 @@ struct CriticalSpring {
 #pragma mark Touches
 
 - (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
-    _pressed = YES;
-    _moved = NO;
-    _startOn = _displayedOn;
     _startX = _currentX = [touch locationInView:self].x;
+    [self performSelector:@selector(beginPress) withObject:nil afterDelay:kMinimumPressDuration
+                inModes:@[ NSRunLoopCommonModes ]];
+    return YES;
+}
+
+- (void)beginPress {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(unliftKnob) object:nil];
+    _pressed = YES;
+    _startOn = _displayedOn;
+    _zeroOffset = 0;
+    _pendingOn = !_displayedOn;
+    _pendingSource = PendingSource::press;
+    if (!_feedback) _feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [_feedback prepare];
     [self setStatic:NO];
+    _track.velocity = 0;
     [self startTicking];
     [self moveKnobAnimated:YES];
     const CGSize size = [self knobSizePressed:YES];
@@ -287,45 +314,70 @@ struct CriticalSpring {
         self->_knob.bounds = CGRectMake(0, 0, size.width, size.height);
         [self->_knob layoutIfNeeded];
     }];
-    return YES;
 }
 
 - (BOOL)continueTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     _currentX = [touch locationInView:self].x;
-    if (std::fabs(_currentX - _startX) > 2) _moved = YES;
-    [self moveKnobAnimated:YES];
-    if (_moved) {
-        const CGFloat x = [self knobXForOn:_startOn offset:[self panOffset] adjusted:YES];
-        const BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
-        const BOOL on = rtl ? x < kWidth / 2 : x > kWidth / 2;
-        if (on != _displayedOn) [self showOn:on animated:YES];
+    if (!_pressed) return YES;
+    if (_pendingSource == PendingSource::pan) {
+        [self applyPending];
+    } else {
+        [self moveKnobAnimated:YES];
+    }
+    const BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
+    const CGFloat toward = (rtl ? -1 : 1) * (_displayedOn ? -1 : 1);
+    const CGFloat delta = [self panOffset] - _zeroOffset;
+    if ((delta > 0) == (toward > 0) && std::fabs(delta) > kToggleDistance) {
+        _pendingOn = !_displayedOn;
+        _pendingSource = PendingSource::pan;
+        _zeroOffset = [self panOffset];
     }
     return YES;
 }
 
-- (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
-    [self finishTracking:YES];
-}
-
-- (void)cancelTrackingWithEvent:(UIEvent *)event {
-    [self finishTracking:NO];
-}
-
-- (void)finishTracking:(BOOL)commit {
-    const BOOL on = !commit ? _startOn : (_moved ? _displayedOn : !_startOn);
-    _pressed = NO;
-    const BOOL changed = on != _on;
-    _on = on;
-    if (on != _displayedOn) [self showOn:on animated:YES];
-    [self startTicking];
+- (void)applyPending {
+    if (_pendingSource == PendingSource::none) return;
+    const BOOL on = _pendingOn;
+    _pendingSource = PendingSource::none;
+    if (on == _displayedOn) return;
+    [self showOn:on animated:YES];
     [self moveKnobAnimated:YES];
+    [_feedback impactOccurred];
+}
+
+- (void)unliftKnob {
     const CGSize size = [self knobSizePressed:NO];
     [_knob setLifted:NO animated:YES alongsideAnimations:^{
         self->_knob.bounds = CGRectMake(0, 0, size.width, size.height);
         [self->_knob layoutIfNeeded];
     }];
-    if (changed) {
-        [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+}
+
+- (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    [self finishTracking];
+}
+
+- (void)cancelTrackingWithEvent:(UIEvent *)event {
+    [self finishTracking];
+}
+
+- (void)finishTracking {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(beginPress) object:nil];
+    if (!_pressed) return;
+    [self applyPending];
+    _pressed = NO;
+    _zeroOffset = 0;
+    _track.velocity = 0;
+    [self startTicking];
+    [self moveKnobAnimated:YES];
+    const CFTimeInterval hang = kLensHangTime - _knob.liftedDuration;
+    if (_knob.lifted && hang > 0) {
+        [self performSelector:@selector(unliftKnob) withObject:nil afterDelay:hang inModes:@[ NSRunLoopCommonModes ]];
+    } else {
+        [self unliftKnob];
+    }
+    if (_displayedOn != _on) {
+        _on = _displayedOn;
         [self sendActionsForControlEvents:UIControlEventValueChanged | UIControlEventPrimaryActionTriggered];
     }
 }

@@ -21,6 +21,8 @@ static BOOL gLogsStats = NO;
 static const CGFloat kSlackPt = 32;
 // The capture grid in backdrop pixels, which keeps the mip blocks fixed to the content.
 static const long kGridPx = 32;
+// Storage grows in steps and is kept while it is at most this much too big, so moving glass does not reallocate.
+static const long kStorageStepPx = 128, kStorageSlackPx = 256;
 
 static NSHashTable<UIView *> *GlassViews() {
     static NSHashTable<UIView *> *views;
@@ -101,7 +103,12 @@ static BOOL VeilsEqual(const GLSBackdropVeil &a, const GLSBackdropVeil &b) {
     const long ix1 = std::min(long(std::ceil(CGRectGetMaxX(want) * s)), vx1);
     const long iy1 = std::min(long(std::ceil(CGRectGetMaxY(want) * s)), vy1);
     if (ix1 <= ix0 || iy1 <= iy0) return NO;
-    const long x0 = snapDown(ix0), y0 = snapDown(iy0), x1 = snapUp(ix1), y1 = snapUp(iy1);
+    const long x0 = snapDown(ix0), y0 = snapDown(iy0);
+    auto storageSide = [](long needed, NSUInteger current) {
+        if (long(current) >= needed && long(current) - needed <= kStorageSlackPx) return long(current);
+        return (needed + kStorageStepPx - 1) / kStorageStepPx * kStorageStepPx;
+    };
+    const long x1 = x0 + storageSide(snapUp(ix1) - x0, _linear.width), y1 = y0 + storageSide(snapUp(iy1) - y0, _linear.height);
     const size_t width = size_t(x1 - x0), height = size_t(y1 - y0);
     const CGRect captured = CGRectMake(x0 / s, y0 / s, width / s, height / s);
     const CGRect valid = CGRectMake(ix0 / s, iy0 / s, (ix1 - ix0) / s, (iy1 - iy0) / s);
@@ -133,8 +140,9 @@ static BOOL VeilsEqual(const GLSBackdropVeil &a, const GLSBackdropVeil &b) {
         UIColor *color = [[self resolvedBaseColorFor:source] resolvedColorWithTraitCollection:source.traitCollection];
         if ([color getRed:&r green:&g blue:&b alpha:&a]) base[0] = float(r), base[1] = float(g), base[2] = float(b);
         const CGRect under = CGRectOffset(_underlayRect, -captured.origin.x, -captured.origin.y);
-        [renderer encodePyramid:_texture fromLinear:_linear underlay:_underlayTexture underlayRect:under pxPerPt:s
-                           base:base commandBuffer:commandBuffer];
+        [renderer encodePyramid:_texture fromLinear:_linear underlay:_underlayTexture underlayRect:under page:_pageTexture
+                       pageRect:CGRectOffset(_pageRect, -captured.origin.x, -captured.origin.y) pxPerPt:s base:base
+                  commandBuffer:commandBuffer];
     } else if (_veil.on) {
         const float params[12] = {float(captured.origin.y), float(s), float(_veil.top), float(_veil.bottom),
                                   float(_veil.y0), float(_veil.y1), float(_veil.sigma), 0,

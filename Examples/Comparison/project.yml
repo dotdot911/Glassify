@@ -1,0 +1,85 @@
+# Two copies of the same app: one with UIKit's iOS 26 classes, one with Glassify.
+# Generate the Xcode project with `xcodegen generate` in this directory.
+name: Comparison
+options:
+  bundleIdPrefix: dev.glassify
+packages:
+  Glassify:
+    path: ../..
+targets:
+  ComparisonUIKit:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources: [Sources, ../GlassifyDemo/Sources/Artwork.swift]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.glassify.comparison.uikit
+        INFOPLIST_FILE: Info.plist
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: XNFGCQVLAN
+  ComparisonGlassify:
+    type: application
+    platform: iOS
+    deploymentTarget: "13.0"
+    sources: [Sources, ../GlassifyDemo/Sources/Artwork.swift]
+    dependencies:
+      - package: Glassify
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.glassify.comparison.glassify
+        INFOPLIST_FILE: Info.plist
+        SWIFT_VERSION: "5.0"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: GLASSIFY
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: XNFGCQVLAN
+  ComparisonUIKitUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "13.0"
+    sources: [UITests]
+    dependencies:
+      - target: ComparisonUIKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.glassify.comparisonuikituitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ComparisonUIKit
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: XNFGCQVLAN
+  ComparisonGlassifyUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "13.0"
+    sources: [UITests]
+    dependencies:
+      - target: ComparisonGlassify
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.glassify.comparisonglassifyuitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ComparisonGlassify
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: XNFGCQVLAN
+schemes:
+  ComparisonUIKit:
+    build:
+      targets:
+        ComparisonUIKit: all
+        ComparisonUIKitUITests: [test]
+    test:
+      targets: [ComparisonUIKitUITests]
+  ComparisonGlassify:
+    build:
+      targets:
+        ComparisonGlassify: all
+        ComparisonGlassifyUITests: [test]
+    test:
+      targets: [ComparisonGlassifyUITests]

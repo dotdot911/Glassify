@@ -1,35 +1,42 @@
 # Glassify
 
-iOS 26 Liquid Glass for iOS 13 and later. Glassify re-implements `UIGlassEffect`,
-`UIGlassContainerEffect` and the glass controls and bars of iOS 26 with a C++17 core and Metal
-shaders. The constants and formulas come from Apple's own frameworks, so the glass looks and moves like the
-system's on every iOS version.
+Glassify brings the Liquid Glass look of iOS 26 to apps that support iOS 13 and later.
 
-| Glassify | iOS 26 counterpart |
-|---|---|
-| `GLSGlassView` | `UIVisualEffectView` + `UIGlassEffect` (regular, clear, tinted, interactive) |
-| `GLSGlassContainerView` | `UIGlassContainerEffect` (shapes that merge) |
-| `GLSGlassButton` | `UIButton.Configuration` `.glass()`, `.prominentGlass()`, `.clearGlass()`, `.prominentClearGlass()` |
-| `GLSSwitch`, `GLSSlider`, `GLSSegmentedControl` | `UISwitch`, `UISlider`, `UISegmentedControl` |
-| `GLSNavigationController` | `UINavigationController` with the glass navigation bar and toolbar |
-| `GLSLiquidLensView` | the liquid "drop" of the tab bar, switch and slider |
+It draws the glass with Metal, so it looks the same on every iOS version, including iOS 26.
 
-Requirements: iOS 13+, a Metal device (every iPhone that runs iOS 13).
+## Features
+
+- [x] Glass views: regular, clear, tinted and interactive
+- [x] Glass containers that merge nearby shapes into one
+- [x] Glass buttons in four styles and three sizes
+- [x] Switch, slider and segmented control with the liquid glass knob
+- [x] Navigation controller with a glass navigation bar and toolbar
+- [x] Light and dark mode
+- [x] Swift and Objective-C
+- [x] Swift Package Manager, CocoaPods and Bazel
+
+## Requirements
+
+- iOS 13.0+
+- Xcode 15.0+
 
 ## Installation
 
 ### Swift Package Manager
 
-```swift
-dependencies: [
-    .package(url: "https://github.com/dotdot911/Glassify.git", from: "0.1.0"),
-],
-targets: [
-    .target(name: "MyApp", dependencies: [.product(name: "Glassify", package: "Glassify")]),
-]
+In Xcode, choose **File > Add Package Dependencies** and enter:
+
+```
+https://github.com/dotdot911/Glassify.git
 ```
 
-Or in Xcode: File › Add Package Dependencies… with the repository URL.
+Or add it to `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/dotdot911/Glassify.git", from: "0.1.0")
+]
+```
 
 ### CocoaPods
 
@@ -37,70 +44,133 @@ Or in Xcode: File › Add Package Dependencies… with the repository URL.
 pod 'Glassify', '~> 0.1'
 ```
 
-Works with and without `use_frameworks!`.
-
 ### Bazel
 
+In `MODULE.bazel`:
+
 ```python
-# MODULE.bazel
 bazel_dep(name = "glassify", version = "0.1.0")
-git_override(module_name = "glassify", remote = "https://github.com/dotdot911/Glassify.git", tag = "0.1.0")
+git_override(
+    module_name = "glassify",
+    remote = "https://github.com/dotdot911/Glassify.git",
+    tag = "0.1.0",
+)
 ```
 
-```python
-# BUILD.bazel
-objc_library(name = "MyAppLib", srcs = [...], deps = ["@glassify//:Glassify"])
-```
-
-The shaders come with the library as `GlassifyShaders.bundle` (rules_apple compiles them).
+Then add `@glassify//:Glassify` to the `deps` of your target.
 
 ## Usage
+
+### Glass view
 
 ```swift
 import Glassify
 
 let glass = GLSGlassView(frame: CGRect(x: 20, y: 100, width: 200, height: 56))
-glass.style = .regular                      // or .clear
-glass.glassTintColor = .systemBlue.withAlphaComponent(0.6)
-glass.isInteractive = true                  // lifts and glows under the finger
-view.addSubview(glass)                      // refracts its superview
-glass.contentView.addSubview(label)         // content is tinted like UIGlassEffect's
+view.addSubview(glass)
 
-// Glass over a scroll view that moves under it:
+let label = UILabel(frame: glass.contentView.bounds)
+label.text = "Hello"
+label.textAlignment = .center
+glass.contentView.addSubview(label)
+```
+
+Put labels and icons in `contentView`. The glass shows what is behind it in its superview.
+
+You can change how it looks:
+
+```swift
+glass.style = .clear
+glass.glassTintColor = UIColor.systemBlue.withAlphaComponent(0.6)
+glass.isInteractive = true
+glass.cornerRadius = 24
+```
+
+If the glass sits on top of a scroll view, tell it which view to show and to follow the scrolling:
+
+```swift
 glass.backdropSourceView = scrollView
 glass.tracksBackdropMotion = true
-
-// Drop-in replacements: keep the UIKit code, change the class.
-let navigation = GLSNavigationController(rootViewController: root)
-let toggle = GLSSwitch()
-let slider = GLSSlider()
-let segments = GLSSegmentedControl(items: ["Day", "Week"])
-let button = GLSGlassButton(style: .prominentGlass)
 ```
 
-Objective-C: `#import <Glassify/Glassify.h>`.
+### Glass container
 
-## Example app
+Glass views inside a container blend together when they get close.
 
-`Examples/GlassifyDemo` shows every component over a scrolling picture.
+```swift
+let container = GLSGlassContainerView(frame: bounds)
+container.spacing = 20
+container.addSubview(GLSGlassView(frame: CGRect(x: 0, y: 0, width: 60, height: 60)))
+container.addSubview(GLSGlassView(frame: CGRect(x: 70, y: 0, width: 60, height: 60)))
+```
+
+### Buttons
+
+```swift
+let button = GLSGlassButton(style: .prominentGlass)
+button.setTitle("Continue", for: .normal)
+button.size = .large
+button.addTarget(self, action: #selector(didTapContinue), for: .touchUpInside)
+button.sizeToFit()
+```
+
+The styles are `.glass`, `.prominentGlass`, `.clearGlass` and `.prominentClearGlass`.
+
+### Controls
+
+`GLSSwitch`, `GLSSlider` and `GLSSegmentedControl` have the same API as `UISwitch`, `UISlider` and
+`UISegmentedControl`.
+
+```swift
+let toggle = GLSSwitch()
+toggle.isOn = true
+
+let slider = GLSSlider()
+slider.value = 0.5
+
+let segments = GLSSegmentedControl(items: ["Day", "Week", "Month"])
+segments.selectedSegmentIndex = 0
+```
+
+You can also use them in Interface Builder: add a view and set its class to `GLSSwitch`,
+`GLSSlider` or `GLSSegmentedControl`.
+
+### Navigation bar and toolbar
+
+Use `GLSNavigationController` instead of `UINavigationController`. Nothing else changes: titles,
+bar button items and toolbar items work as before.
+
+```swift
+let navigation = GLSNavigationController(rootViewController: HomeViewController())
+```
+
+### Objective-C
+
+```objc
+#import <Glassify/Glassify.h>
+
+GLSGlassView *glass = [[GLSGlassView alloc] initWithFrame:CGRectMake(20, 100, 200, 56)];
+glass.style = GLSGlassStyleClear;
+[self.view addSubview:glass];
+```
+
+## Example
+
+The example app shows every component. To run it, install
+[XcodeGen](https://github.com/yonaskolb/XcodeGen), then:
 
 ```sh
-cd Examples/GlassifyDemo && xcodegen generate && open GlassifyDemo.xcodeproj
-# or with Bazel:
-bazel build //Examples/GlassifyDemo:GlassifyDemo --ios_multi_cpus=sim_arm64
+cd Examples/GlassifyDemo
+xcodegen generate
+open GlassifyDemo.xcodeproj
 ```
 
-## Repository layout
+## Contributing
 
-```
-Sources/Glassify/include/Glassify   public headers
-Sources/Glassify/Core               C++17 core: glass parameters, colour matrices, springs
-Sources/Glassify/Platform           UIKit layer: views, controls, Metal renderer, backdrop capture
-Sources/Glassify/Shaders            Metal shaders
-Tests/Core                          unit tests of the core (CMake or `bazel test //:core_tests`)
-Examples/GlassifyDemo               example app
-```
+- If you find a bug, open an issue.
+- If you have an idea, open an issue.
+- If you want to help, send a pull request.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Glassify is released under the Apache License 2.0. See [LICENSE](LICENSE) for details.

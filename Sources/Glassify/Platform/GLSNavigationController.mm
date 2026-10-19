@@ -8,6 +8,8 @@
 
 #import "Glassify/GLSNavigationController.h"
 
+#import "GLSScrollEdgeEffectViewInternal.h"
+
 #import "Glassify/GLSNavigationBar.h"
 #import "Glassify/GLSScrollEdgeEffectView.h"
 #import "Glassify/GLSToolbar.h"
@@ -338,6 +340,8 @@ static NSArray<UIBarButtonItem *> *VisibleItems(NSArray<UIBarButtonItem *> *item
     }
     bar.scrollView = scroll;
     toolbar.scrollView = scroll;
+    [_topEdge gls_matchBackgroundOf:scroll ?: vc.view];
+    [_bottomEdge gls_matchBackgroundOf:scroll ?: vc.view];
 }
 
 - (void)showItemsOf:(UIViewController *)vc {

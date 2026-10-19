@@ -264,9 +264,20 @@ static float blurredDisc(float r, float R) {
     return mix(kGlowLUT[i], kGlowLUT[i + 1], x - float(i));
 }
 
+static float4 applyVibrancy(float4 out, float k, float2 pt, constant GLSGlassUniforms& u,
+                            texture2d<float> backdrop, constant float4 *cm) {
+    if (k <= 0) return out;
+    const float2 uv = (pt - u.backdropMap.xy) * u.backdropMap.zw;
+    const float4 bg = backdrop.sample(kBackdropSampler, uv, level(0.f));
+    const float3 under = out.rgb + (1 - out.a) * bg.rgb;
+    const float3 lit = saturate(float3(dot(cm[0].xyz, under) + cm[0].w, dot(cm[1].xyz, under) + cm[1].w,
+                                       dot(cm[2].xyz, under) + cm[2].w));
+    return float4(out.rgb * (1 - k) + lit * k, out.a * (1 - k) + k);
+}
+
 static float4 applyHighlight(GLSVertexOut in, float4 dst, constant GLSGlassUniforms& u,
                              constant GLSElement* elements, texture2d<float> backdrop,
-                             texture2d<float> vibrantMask) {
+                             texture2d<float> vibrantMask, texture2d<float> tintedMask) {
     const float3 s = sceneSDF(in.pt, u, elements);
     float4 out = dst;
 
@@ -312,14 +323,18 @@ static float4 applyHighlight(GLSVertexOut in, float4 dst, constant GLSGlassUnifo
 
     if (u.vibrant0.x > 0) {
         constexpr sampler kMaskSampler(filter::linear, address::clamp_to_zero);
-        const float k = vibrantMask.sample(kMaskSampler, in.pt * u.vibrant0.yz).a;
-        if (k > 0) {
-            const float2 uv = (in.pt - u.backdropMap.xy) * u.backdropMap.zw;
-            const float4 bg = backdrop.sample(kBackdropSampler, uv, level(0.f));
-            const float3 under = out.rgb + (1 - out.a) * bg.rgb;
-            const float3 lit = saturate(applyCM(u.vibrantCM, under));
-            out = float4(out.rgb * (1 - k) + lit * k, out.a * (1 - k) + k);
+        float inHole = 0;
+        if (u.vibrant1.w > 0) {
+            const float2 q = abs(in.pt - u.vibrantHole.xy) - u.vibrantHole.zw + u.vibrant1.z;
+            const float d = length(max(q, 0.0f)) + min(max(q.x, q.y), 0.0f) - u.vibrant1.z;
+            inHole = saturate(0.5f - d / max(fwidth(d), 1e-4f));
         }
+        const float2 maskUV = float2(dot(u.vibrantMap0.xy, in.pt) + u.vibrantMap0.z, dot(u.vibrantMap1.xy, in.pt) + u.vibrantMap1.z);
+        out = applyVibrancy(out, vibrantMask.sample(kMaskSampler, maskUV).a * (1 - inHole), in.pt, u,
+                            backdrop, u.vibrantCM);
+        if (u.vibrant1.x > 0)
+            out = applyVibrancy(out, tintedMask.sample(kMaskSampler, maskUV).a * inHole * u.vibrant1.y, in.pt,
+                                u, backdrop, u.vibrantCM2);
     }
 
     if (u.glow0.x > 0 || u.glow0.y > 0) {
@@ -349,8 +364,9 @@ fragment float4 gls_glass_highlight(GLSVertexOut in [[stage_in]],
                                     constant GLSGlassUniforms& u [[buffer(0)]],
                                     constant GLSElement* elements [[buffer(1)]],
                                     texture2d<float> backdrop [[texture(0)]],
-                                    texture2d<float> vibrantMask [[texture(3)]]) {
-    return applyHighlight(in, dst, u, elements, backdrop, vibrantMask);
+                                    texture2d<float> vibrantMask [[texture(3)]],
+                                    texture2d<float> tintedMask [[texture(4)]]) {
+    return applyHighlight(in, dst, u, elements, backdrop, vibrantMask, tintedMask);
 }
 
 // The simulator has no framebuffer fetch: the background pass went to an offscreen texture.
@@ -359,6 +375,7 @@ fragment float4 gls_glass_highlight_texture(GLSVertexOut in [[stage_in]],
                                             constant GLSElement* elements [[buffer(1)]],
                                             texture2d<float> backdrop [[texture(0)]],
                                             texture2d<float, access::read> background [[texture(1)]],
-                                            texture2d<float> vibrantMask [[texture(3)]]) {
-    return applyHighlight(in, background.read(uint2(in.position.xy)), u, elements, backdrop, vibrantMask);
+                                            texture2d<float> vibrantMask [[texture(3)]],
+                                            texture2d<float> tintedMask [[texture(4)]]) {
+    return applyHighlight(in, background.read(uint2(in.position.xy)), u, elements, backdrop, vibrantMask, tintedMask);
 }

@@ -20,4 +20,5 @@
 #import <Glassify/GLSSegmentedControl.h>
 #import <Glassify/GLSSlider.h>
 #import <Glassify/GLSSwitch.h>
+#import <Glassify/GLSTabBarController.h>
 #import <Glassify/GLSToolbar.h>

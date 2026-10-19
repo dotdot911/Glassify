@@ -38,6 +38,9 @@ typedef struct {
 // Another surface's last frame, drawn between the base colour and the source.
 @property (nonatomic, strong, nullable) id<MTLTexture> underlayTexture;
 @property (nonatomic) CGRect underlayRect;
+// What lies under the underlay glass, in place of `baseColor`; `pageRect` is in source points.
+@property (nonatomic, strong, nullable) id<MTLTexture> pageTexture;
+@property (nonatomic) CGRect pageRect;
 // A change re-encodes the pyramid from the last snapshot without capturing again.
 @property (nonatomic) GLSBackdropVeil veil;
 

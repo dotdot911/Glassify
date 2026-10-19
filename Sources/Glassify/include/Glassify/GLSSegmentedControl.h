@@ -71,7 +71,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSDictionary<NSAttributedStringKey, id> *)titleTextAttributesForState:(UIControlState)state;
 
 /// The view whose rendering the lifted glass refracts.
-/// The default is the superview.
+/// The default is the nearest ancestor with an opaque background, or the window.
 @property (nonatomic, weak, nullable) UIView *backdropSourceView;
 
 @end

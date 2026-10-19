@@ -8,6 +8,7 @@
 
 #import "Glassify/GLSSlider.h"
 
+#import "GLSGlassViewInternal.h"
 #import "Glassify/GLSLiquidLensView.h"
 
 #include <algorithm>
@@ -16,6 +17,9 @@
 namespace {
 constexpr CGFloat kKnobW = 37, kKnobH = 24, kPressedScale = 1.55, kTrackH = 6;
 constexpr CGFloat kPanHysteresis = 10, kProjectionTime = 0.099, kProjectionThreshold = 10;
+constexpr CGFloat kStretchLimit = 12, kRubberBand = 0.55, kDriftFactor = 0.27, kSquishFactor = 0.92, kMinSquishPoints = 4;
+constexpr CGFloat kFillEndRamp = 0.02;
+constexpr CGFloat kSettleResponse = 0.4, kProgrammaticDamping = 0.8, kProgrammaticResponse = 0.4;
 // The gap between a value image and the end of the track.
 constexpr CGFloat kImageGap = 11;
 constexpr float kAccessibilityStep = 0.1f;
@@ -28,7 +32,7 @@ constexpr float kAccessibilityStep = 0.1f;
     BOOL _tracking, _dragging;
     CGFloat _touchStartX;
     // Pan driver state: the unclamped normalized value and the velocity samples in pt/s.
-    CGFloat _panOriginX, _lastTranslation, _dragT;
+    CGFloat _panOriginX, _lastTranslation, _dragT, _displayT;
     CGFloat _velPrev, _velLast, _lastMoveX;
     NSTimeInterval _lastMoveTime;
     int _velSamples;
@@ -208,9 +212,14 @@ constexpr float kAccessibilityStep = 0.1f;
 - (double)_accessibilityNumberValue { return _value; }
 - (NSNumber *)_accessibilityAbsoluteValue { return @(float((_value - _minimumValue) / (_maximumValue - _minimumValue))); }
 
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    _knob.backdropSourceView = GLSDefaultBackdropSource(self);
+}
+
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
-    _knob.backdropSourceView = self.superview ?: self;
+    _knob.backdropSourceView = GLSDefaultBackdropSource(self);
 }
 
 - (void)tintColorDidChange {
@@ -254,7 +263,7 @@ constexpr float kAccessibilityStep = 0.1f;
     _settleLink = nil;
     _value = std::min(std::max(value, _minimumValue), _maximumValue);
     if (animated) {
-        GLSAnimateWithSpring(1.0, 0.3, ^{ [self layoutKnobAndFill]; }, nil);
+        GLSAnimateWithSpring(kProgrammaticDamping, kProgrammaticResponse, ^{ [self layoutKnobAndFill]; }, nil);
     } else {
         [self setNeedsLayout];
     }
@@ -302,18 +311,54 @@ constexpr float kAccessibilityStep = 0.1f;
     [self layoutKnobPosition];
 }
 
-// The touch-up spring animates only the thumb's centre and the fill.
+// The unclamped value past an end, compressed the way UIKit's elastic pan driver does.
+- (CGFloat)rubberBandedValue:(CGFloat)t {
+    const CGFloat clamped = std::min(std::max(t, CGFloat(0)), CGFloat(1)), over = t - clamped;
+    if (over == 0) return clamped;
+    const CGFloat limit = std::copysign(kStretchLimit / [self trackLength], over);
+    return clamped + limit * (1 - 1 / (over / limit * kRubberBand + 1));
+}
+
+- (CGFloat)displayedValue {
+    return _dragging || _settleLink ? _displayT : [self normalizedValue];
+}
+
+// The fill reaches the ends of the track over the last 2 % of the range.
+- (CGFloat)fillEdgeAt:(CGFloat)t length:(CGFloat)length {
+    const CGFloat ramp = t <= kFillEndRamp ? t / kFillEndRamp : t >= 1 - kFillEndRamp ? (1 - t) / kFillEndRamp : 1;
+    const CGFloat inset = kKnobW * ramp;
+    return inset / 2 + t * (length - inset);
+}
+
+// The touch-up spring animates only the thumb's centre, the fill and the track's stretch.
 - (void)layoutKnobPosition {
     const CGSize size = self.bounds.size;
     const CGRect track = [self trackRectForBounds:self.bounds];
-    _maxTrack.frame = track;
-    _minImageView.frame = [self minimumValueImageRectForBounds:self.bounds];
-    _maxImageView.frame = [self maximumValueImageRectForBounds:self.bounds];
-    const CGFloat x = [self knobCenterForValue:_value];
-    const CGFloat fx = x - CGRectGetMinX(track);
     const BOOL rtl = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft;
-    _minTrack.frame = rtl ? CGRectMake(fx, 0, track.size.width - fx, kTrackH) : CGRectMake(0, 0, fx, kTrackH);
-    _knob.center = CGPointMake(x, size.height / 2);
+    const CGFloat shown = [self displayedValue];
+    const CGFloat t = std::min(std::max(shown, CGFloat(0)), CGFloat(1));
+    const CGFloat overflow = (shown - t) * track.size.width, stretch = std::fabs(overflow);
+    const CGFloat length = track.size.width + (1 - kDriftFactor) * stretch;
+    const CGFloat squish = stretch / kStretchLimit;
+    const CGFloat minWidth = std::min(kTrackH * kSquishFactor, kTrackH - kMinSquishPoints);
+    const CGFloat thickness = kTrackH * (1 - squish) + squish * minWidth;
+    const CGFloat drift = (rtl ? -1 : 1) * (kDriftFactor + 0.5) * overflow;
+    const CGRect clip = CGRectMake(CGRectGetMidX(track) - length / 2 + drift, CGRectGetMidY(track) - thickness / 2, length,
+                                   thickness);
+    _maxTrack.frame = clip;
+    _maxTrack.layer.cornerRadius = std::min(length, thickness) / 2;
+    _minTrack.layer.cornerRadius = _maxTrack.layer.cornerRadius;
+    const CGFloat start = rtl ? [self fillEdgeAt:1 - t length:length] : 0;
+    const CGFloat end = rtl ? length : [self fillEdgeAt:t length:length];
+    _minTrack.frame = CGRectMake(start, 0, std::max(end - start, CGFloat(0)), thickness);
+    const CGRect minImage = [self minimumValueImageRectForBounds:self.bounds];
+    const CGRect maxImage = [self maximumValueImageRectForBounds:self.bounds];
+    const CGFloat leftShift = CGRectGetMinX(clip) - CGRectGetMinX(track), rightShift = CGRectGetMaxX(clip) - CGRectGetMaxX(track);
+    _minImageView.frame = CGRectOffset(minImage, rtl ? rightShift : leftShift, 0);
+    _maxImageView.frame = CGRectOffset(maxImage, rtl ? leftShift : rightShift, 0);
+    CGFloat x = CGRectGetMinX(clip) + (rtl ? 1 - t : t) * (length - kKnobW);
+    if (!_tracking) x = std::round(x);
+    _knob.center = CGPointMake(x + kKnobW / 2, size.height / 2);
     [_knob setNeedsBackdropUpdate];
 }
 
@@ -345,6 +390,7 @@ constexpr float kAccessibilityStep = 0.1f;
         _panOriginX = _touchStartX + std::copysign(kPanHysteresis, touchX - _touchStartX);
         _lastTranslation = 0;
         _dragT = [self normalizedValue];
+        _displayT = _dragT;
         _velSamples = 0;
         _velPrev = _velLast = 0;
         _lastMoveX = touchX;
@@ -365,10 +411,9 @@ constexpr float kAccessibilityStep = 0.1f;
     _lastTranslation = translation;
     const float old = _value;
     [self setNormalizedValue:_dragT];
-    if (_value != old) {
-        [UIView performWithoutAnimation:^{ [self layoutKnobPosition]; }];
-        if (_continuous) [self sendValueChanged];
-    }
+    _displayT = [self rubberBandedValue:_dragT];
+    [UIView performWithoutAnimation:^{ [self layoutKnobPosition]; }];
+    if (_value != old && _continuous) [self sendValueChanged];
     return YES;
 }
 
@@ -376,17 +421,21 @@ constexpr float kAccessibilityStep = 0.1f;
 - (CGFloat)trackLength { return std::max([self trackRectForBounds:self.bounds].size.width, CGFloat(1)); }
 
 - (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    [self releaseDrag];
+    [self finishTracking];
+    [self sendValueChanged];
+}
+
+- (void)releaseDrag {
     if (_dragging) {
         const CGFloat dir = self.effectiveUserInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft ? -1 : 1;
         const CGFloat velocity = _velSamples >= 2 ? 0.2 * _velLast + 0.8 * _velPrev : _velLast;
         CGFloat target = _dragT + dir * velocity / [self trackLength] * kProjectionTime;
         if (std::fabs(target - _dragT) < kProjectionThreshold / [self trackLength]) target = _dragT;
         target = std::min(std::max(target, CGFloat(0)), CGFloat(1));
-        if (std::fabs(target - [self normalizedValue]) > 1e-6)
-            [self settleToNormalizedValue:target velocity:dir * velocity / [self trackLength]];
+        if (std::fabs(target - _dragT) > 1e-6)
+            [self settleFrom:_dragT toNormalizedValue:target velocity:dir * velocity / [self trackLength]];
     }
-    [self finishTracking];
-    [self sendValueChanged];
 }
 
 // UIKit 26 sends ValueChanged and PrimaryActionTriggered together.
@@ -395,10 +444,11 @@ constexpr float kAccessibilityStep = 0.1f;
 }
 
 // The release spring moves the value itself, so UIKit reports a ValueChanged on every frame.
-- (void)settleToNormalizedValue:(CGFloat)target velocity:(CGFloat)velocity {
+- (void)settleFrom:(CGFloat)start toNormalizedValue:(CGFloat)target velocity:(CGFloat)velocity {
     [_settleLink invalidate];
     _settleTarget = target;
-    _settleT = [self normalizedValue];
+    _settleT = start;
+    _displayT = [self rubberBandedValue:start];
     _settleV = velocity;
     _settleLast = CACurrentMediaTime();
     _settleLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(settleTick)];
@@ -407,7 +457,7 @@ constexpr float kAccessibilityStep = 0.1f;
 
 - (void)settleTick {
     const CFTimeInterval now = CACurrentMediaTime();
-    const double dt = std::min(now - _settleLast, 1.0 / 30), w = 2 * M_PI / 0.4;
+    const double dt = std::min(now - _settleLast, 1.0 / 30), w = 2 * M_PI / kSettleResponse;
     _settleLast = now;
     const double x0 = _settleT - _settleTarget, v0 = _settleV, e = std::exp(-w * dt);
     _settleT = _settleTarget + (x0 + (v0 + w * x0) * dt) * e;
@@ -417,15 +467,17 @@ constexpr float kAccessibilityStep = 0.1f;
     if (done) _settleT = _settleTarget;
     const float old = _value;
     [self setNormalizedValue:_settleT];
-    [UIView performWithoutAnimation:^{ [self layoutKnobPosition]; }];
-    if (_value != old && _continuous) [self sendValueChanged];
+    _displayT = [self rubberBandedValue:_settleT];
     if (done) {
         [_settleLink invalidate];
         _settleLink = nil;
     }
+    [UIView performWithoutAnimation:^{ [self layoutKnobPosition]; }];
+    if (_value != old && _continuous) [self sendValueChanged];
 }
 
 - (void)cancelTrackingWithEvent:(UIEvent *)event {
+    [self releaseDrag];
     [self finishTracking];
 }
 

@@ -62,7 +62,7 @@ typedef NS_ENUM(NSInteger, GLSGlassButtonSize) {
 @property (nonatomic, readonly, nullable) UIImage *currentImage;
 
 /// The view whose rendering appears through the glass.
-/// The default is the superview.
+/// The default is the nearest ancestor with an opaque background, or the window.
 @property (nonatomic, weak, nullable) UIView *backdropSourceView;
 /// A Boolean value that determines whether the glass re-renders every frame to follow a backdrop source moving under it.
 /// The default is `NO`.

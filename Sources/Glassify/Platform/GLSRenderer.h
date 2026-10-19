@@ -41,6 +41,17 @@ NS_ASSUME_NONNULL_BEGIN
                  base:(const float *)baseRGBA
         commandBuffer:(id<MTLCommandBuffer>)commandBuffer;
 
+// The same with `page` (sampled at `pageRect` in capture points) in place of the `base` colour.
+- (void)encodePyramid:(id<MTLTexture>)pyramid
+           fromLinear:(id<MTLTexture>)linear
+             underlay:(id<MTLTexture>)underlay
+         underlayRect:(CGRect)underlayRect
+                 page:(nullable id<MTLTexture>)page
+             pageRect:(CGRect)pageRect
+              pxPerPt:(CGFloat)pxPerPt
+                 base:(const float *)baseRGBA
+        commandBuffer:(id<MTLCommandBuffer>)commandBuffer;
+
 // With `output`, the drawable is also copied there, so the layer must not be framebufferOnly.
 - (void)drawInLayer:(CAMetalLayer *)layer
         surfaceSize:(CGSize)surfaceSizePt
@@ -49,6 +60,7 @@ NS_ASSUME_NONNULL_BEGIN
            backdrop:(id<MTLTexture>)backdrop
             content:(nullable id<MTLTexture>)content
         vibrantMask:(nullable id<MTLTexture>)vibrantMask
+         tintedMask:(nullable id<MTLTexture>)tintedMask
              output:(nullable id<MTLTexture>)output;
 
 @end

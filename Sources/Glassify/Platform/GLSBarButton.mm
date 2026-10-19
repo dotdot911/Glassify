@@ -61,15 +61,19 @@ static NSString *TitleForSystemItem(NSInteger s) {
     }
 }
 
+static constexpr CGFloat kTrackingSlop = 15;
+
 @implementation GLSBarButton {
     UIImageView *_imageView;
     UILabel *_label;
+    BOOL _touchInside;
 }
 
 - (instancetype)initWithItem:(UIBarButtonItem *)item {
     if (!(self = [super initWithFrame:CGRectZero])) return nil;
     _item = item;
     _highlightedAlpha = 0.2;
+    _touchInside = YES;
     const NSInteger system = GLSBarButtonSystemItem(item);
     UIImage *image = item.image;
     NSString *title = item.title;
@@ -104,6 +108,7 @@ static NSString *TitleForSystemItem(NSInteger s) {
 - (instancetype)initBackButton {
     if (!(self = [super initWithFrame:CGRectZero])) return nil;
     _highlightedAlpha = 0.2;
+    _touchInside = YES;
     _imageView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.backward"]];
     UIFontDescriptor *emphasized = [[UIFontDescriptor preferredFontDescriptorWithTextStyle:UIFontTextStyleBody]
         fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold];
@@ -123,6 +128,7 @@ static NSString *TitleForSystemItem(NSInteger s) {
 
 // Dims the glyph at once on touch down and fades it back on release, like UIKit's bar buttons.
 - (void)setHighlighted:(BOOL)highlighted {
+    highlighted = highlighted && (!self.tracking || _touchInside);
     if (highlighted == self.highlighted) return;
     [super setHighlighted:highlighted];
     UIView *content = _imageView ?: _label;
@@ -160,24 +166,34 @@ static NSString *TitleForSystemItem(NSInteger s) {
 
 #pragma mark Touches
 
+- (BOOL)isTrackingTouchInside:(UITouch *)touch {
+    return CGRectContainsPoint(CGRectInset(self.bounds, -kTrackingSlop, -kTrackingSlop), [touch locationInView:self]);
+}
+
 - (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    _touchInside = YES;
     if (GLSGlassView *p = _platter) [p gls_beginPressAtPoint:[touch locationInView:p]];
     return YES;
 }
 
 - (BOOL)continueTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     if (GLSGlassView *p = _platter) [p gls_movePressToPoint:[touch locationInView:p]];
+    _touchInside = [self isTrackingTouchInside:touch];
+    self.highlighted = _touchInside;
     return YES;
 }
 
 - (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
     [_platter gls_endPress];
-    if (!touch || ![self pointInside:[touch locationInView:self] withEvent:event]) return;
+    const BOOL inside = touch && [self isTrackingTouchInside:touch];
+    _touchInside = YES;
+    if (!inside) return;
     if (_handler) _handler();
     if (_item.action) [UIApplication.sharedApplication sendAction:_item.action to:_item.target from:_item forEvent:event];
 }
 
 - (void)cancelTrackingWithEvent:(UIEvent *)event {
+    _touchInside = YES;
     [_platter gls_endPress];
 }
 

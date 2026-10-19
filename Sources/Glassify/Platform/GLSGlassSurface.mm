@@ -57,7 +57,11 @@ GlassInputs GLSResolveInputs(const GLSSurfaceRequest &request, UITraitCollection
     return inputs;
 }
 
+static constexpr CGFloat kSurfaceSlack = 16, kSurfaceSlackMax = 48;
+
 @implementation GLSGlassSurface {
+    CGSize _surfaceSize;
+    GLSContentMask *_tintedMask;
     __weak UIView *_host;
     id<MTLTexture> _output;
     CGRect _outputRect;
@@ -227,7 +231,15 @@ static void *kSourceBoundsContext = &kSourceBoundsContext;
     GlassInputs inputs = request.inputs ? *request.inputs : GLSResolveInputs(request, host.traitCollection, _appearance, -1.f);
     const CGFloat margin = std::ceil(std::max<CGFloat>({inputs.marginWidth, 2.f * inputs.shadowRadius + 8.f,
                                                         inputs.tint[3] > 0 ? inputs.tintFadeDistance + 2.f : 0.f}));
-    const CGRect surfaceRect = CGRectIntegral(CGRectInset(shapes, -margin, -margin));
+    const CGRect neededRect = CGRectIntegral(CGRectInset(shapes, -margin, -margin));
+    const CGSize need = neededRect.size;
+    if (_surfaceSize.width < need.width || _surfaceSize.height < need.height ||
+        _surfaceSize.width > need.width + 2 * kSurfaceSlackMax || _surfaceSize.height > need.height + 2 * kSurfaceSlackMax) {
+        _surfaceSize = CGSizeMake(need.width + 2 * kSurfaceSlack, need.height + 2 * kSurfaceSlack);
+    }
+    const CGRect surfaceRect = CGRectMake(std::floor(CGRectGetMidX(neededRect) - _surfaceSize.width / 2),
+                                          std::floor(CGRectGetMidY(neededRect) - _surfaceSize.height / 2),
+                                          _surfaceSize.width, _surfaceSize.height);
 
     const CGRect surfaceInSource = [hostLayer convertRect:surfaceRect toLayer:sourceLayer];
     const CGSize surfaceScale = CGSizeMake(surfaceInSource.size.width / surfaceRect.size.width,
@@ -246,8 +258,18 @@ static void *kSourceBoundsContext = &kSourceBoundsContext;
         CALayer *underLayer = underlayHost.layer.presentationLayer ?: underlayHost.layer;
         _backdrop.underlayTexture = underlay.outputTexture;
         _backdrop.underlayRect = [underLayer convertRect:underlay.outputRect toLayer:sourceLayer];
+        GLSBackdrop *page = underlay.backdrop;
+        UIView *pageSource = page.source;
+        if (page.texture && pageSource && pageSource != source) {
+            CALayer *pageLayer = pageSource.layer.presentationLayer ?: pageSource.layer;
+            _backdrop.pageTexture = page.texture;
+            _backdrop.pageRect = [pageLayer convertRect:page.capturedRect toLayer:sourceLayer];
+        } else {
+            _backdrop.pageTexture = nil;
+        }
     } else {
         _backdrop.underlayTexture = nil;
+        _backdrop.pageTexture = nil;
     }
     UIView *edge = request.lumaEdge;
     _backdrop.veil = edge && ![edge isDescendantOfView:source] ? [(GLSScrollEdgeEffectView *)edge gls_veilInView:source]
@@ -312,8 +334,9 @@ static void *kSourceBoundsContext = &kSourceBoundsContext;
     _metalLayer.frame = surfaceRect;
     _metalLayer.opacity = std::min(2.f * materialize, 1.f) * request.opacity;
     _metalLayer.contentsScale = screenScale;
-    _metalLayer.drawableSize = CGSizeMake(std::ceil(surfaceRect.size.width * screenScale),
-                                          std::ceil(surfaceRect.size.height * screenScale));
+    const CGSize drawableSize = CGSizeMake(std::ceil(surfaceRect.size.width * screenScale),
+                                           std::ceil(surfaceRect.size.height * screenScale));
+    if (!CGSizeEqualToSize(_metalLayer.drawableSize, drawableSize)) _metalLayer.drawableSize = drawableSize;
     [CATransaction commit];
 
     std::vector<ShapeElement> elements = request.elements;
@@ -377,11 +400,54 @@ static void *kSourceBoundsContext = &kSourceBoundsContext;
         }
         _outputRect = surfaceRect;
     }
+    CALayer *maskLayer = host.layer;
+    CGRect maskRect = surfaceRect;
+    CGAffineTransform surfaceToMask = CGAffineTransformMakeScale(1 / surfaceRect.size.width, 1 / surfaceRect.size.height);
+    if (UIView *reference = request.vibrantReference) {
+        maskLayer = reference.layer;
+        maskRect = reference.bounds;
+        CALayer *shownReference = reference.layer.presentationLayer ?: reference.layer;
+        CALayer *shownHost = host.layer.presentationLayer ?: host.layer;
+        const CGPoint a = [shownReference convertPoint:CGPointZero toLayer:shownHost];
+        const CGPoint x = [shownReference convertPoint:CGPointMake(1, 0) toLayer:shownHost];
+        const CGPoint y = [shownReference convertPoint:CGPointMake(0, 1) toLayer:shownHost];
+        const CGAffineTransform localToHost = CGAffineTransformMake(x.x - a.x, x.y - a.y, y.x - a.x, y.y - a.y, a.x, a.y);
+        surfaceToMask = CGAffineTransformConcat(
+            CGAffineTransformConcat(CGAffineTransformMakeTranslation(surfaceRect.origin.x, surfaceRect.origin.y),
+                                    CGAffineTransformInvert(localToHost)),
+            CGAffineTransformConcat(CGAffineTransformMakeTranslation(-maskRect.origin.x, -maskRect.origin.y),
+                                    CGAffineTransformMakeScale(1 / maskRect.size.width, 1 / maskRect.size.height)));
+    }
+    uniforms.vibrantMap0 = {float(surfaceToMask.a), float(surfaceToMask.c), float(surfaceToMask.tx), 0.f};
+    uniforms.vibrantMap1 = {float(surfaceToMask.b), float(surfaceToMask.d), float(surfaceToMask.ty), 0.f};
     id<MTLTexture> vibrantMask = nil;
     if (request.vibrantViews.count) {
         if (!_contentMask) _contentMask = [GLSContentMask new];
-        vibrantMask = [_contentMask maskForViews:request.vibrantViews hostLayer:host.layer rect:surfaceRect
+        vibrantMask = [_contentMask maskForViews:request.vibrantViews hostLayer:maskLayer rect:maskRect
                                            scale:screenScale device:renderer.device];
+    }
+    id<MTLTexture> tintedMask = nil;
+    if (request.tintedVibrantViews.count) {
+        if (!_tintedMask) _tintedMask = [GLSContentMask new];
+        tintedMask = [_tintedMask maskForViews:request.tintedVibrantViews hostLayer:maskLayer rect:maskRect
+                                         scale:screenScale device:renderer.device];
+    }
+    if (tintedMask) {
+        const int scheme = appearance == Appearance::Dark ? 1 : 0;
+        uniforms.vibrant0 = {1.f, float(1.0 / surfaceRect.size.width), float(1.0 / surfaceRect.size.height), 0.f};
+        uniforms.vibrant1.x = 1.f;
+        uniforms.vibrant1.y = request.tintedOpacity;
+        for (int r = 0; r < 3; ++r) {
+            const float *row = request.tintedMatrix[scheme][r];
+            uniforms.vibrantCM2[r] = {row[0], row[1], row[2], row[3]};
+        }
+    }
+    if (!CGRectIsNull(request.vibrantHole)) {
+        const CGRect h = request.vibrantHole;
+        uniforms.vibrant1.z = float(std::min(h.size.width, h.size.height) / 2);
+        uniforms.vibrant1.w = 1.f;
+        uniforms.vibrantHole = {float(CGRectGetMidX(h) - surfaceRect.origin.x), float(CGRectGetMidY(h) - surfaceRect.origin.y),
+                                float(h.size.width / 2), float(h.size.height / 2)};
     }
     if (vibrantMask) {
         const bool dark = appearance == Appearance::Dark;
@@ -401,6 +467,7 @@ static void *kSourceBoundsContext = &kSourceBoundsContext;
                  backdrop:backdropTexture
                   content:request.content
               vibrantMask:vibrantMask
+               tintedMask:tintedMask
                    output:_keepsOutput ? _output : nil];
 
     _lastHostRectInSource = hostInSource;

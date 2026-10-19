@@ -103,6 +103,14 @@ struct GLSGlassUniforms {
     gls_float4 vibrant0;
     // Content vibrancy matrix rows.
     gls_float4 vibrantCM[3];
+    // Second content set (the tab bar's tinted items): on, opacity, hole corner radius (pt), hole on.
+    gls_float4 vibrant1;
+    // Capsule cut out of the first set and kept by the second: centre.xy, half size.zw (pt).
+    gls_float4 vibrantHole;
+    // Surface point to mask uv: u = dot(map0.xy, pt) + map0.z, v = dot(map1.xy, pt) + map1.z.
+    gls_float4 vibrantMap0, vibrantMap1;
+    // Second content set matrix rows.
+    gls_float4 vibrantCM2[3];
 };
 
 #endif
